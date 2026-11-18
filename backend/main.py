@@ -3,14 +3,17 @@ import logging
 import os
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from pypdf.errors import PdfReadError
 
 from graph.workflow import graph, progress_graph
 from prompts.clarification_prompt import get_clarification_prompt
 from schemas.api_schema import (
     ClarificationRequest,
+    KnowledgeSourceReference,
+    KnowledgeSourceUploadResponse,
     ProjectPlan,
     ProjectPlanRequest,
     ProjectPlanResponse,
@@ -19,6 +22,13 @@ from schemas.api_schema import (
 from schemas.clarification_schema import ClarificationResponse
 from services import project_repository
 from services.llm_service import llm_service
+from services.observability import observe
+from rag.retriever import (
+    ensure_source_indexed,
+    extract_document_text,
+    ingest_document,
+)
+from rag.vectorstore import delete_document, list_documents
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +39,7 @@ PLAN_OUTPUT_KEYS = (
     "sprint",
     "documentation",
 )
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 app = FastAPI(
     title="Multi-Agent AI Project Manager",
@@ -83,10 +94,18 @@ def _validate_plan_result(result: dict) -> ProjectPlan:
 
 def _save_project_plan(project_idea: str, result: dict) -> ProjectPlanResponse:
     plan = _validate_plan_result(result)
+    sources_used = [
+        KnowledgeSourceReference.model_validate(source)
+        for source in result.get("retrieved_sources", [])
+    ]
+    saved_plan = plan.model_dump(mode="json")
+    saved_plan["sources_used"] = [
+        source.model_dump(mode="json") for source in sources_used
+    ]
     try:
         saved_project = project_repository.save_project(
             project_idea=project_idea,
-            plan=plan.model_dump(mode="json"),
+            plan=saved_plan,
         )
     except Exception as error:
         logger.exception("Could not persist the generated project plan.")
@@ -98,6 +117,7 @@ def _save_project_plan(project_idea: str, result: dict) -> ProjectPlanResponse:
     return ProjectPlanResponse(
         project_id=saved_project["project_id"],
         created_at=saved_project["created_at"],
+        sources_used=sources_used,
         **plan.model_dump(),
     )
 
@@ -121,9 +141,118 @@ def _project_input_with_clarifications(request: ProjectPlanRequest) -> str:
     )
 
 
+def _initial_workflow_state(request: ProjectPlanRequest) -> dict:
+    for source_id in request.source_ids:
+        try:
+            ensure_source_indexed(source_id)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except Exception as error:
+            logger.exception("Could not prepare knowledge source %s.", source_id)
+            raise HTTPException(
+                status_code=503,
+                detail="A selected knowledge source could not be indexed.",
+            ) from error
+
+    return {
+        "user_input": _project_input_with_clarifications(request),
+        "requirements": None,
+        "research": None,
+        "architecture": None,
+        "sprint": None,
+        "documentation": None,
+        "supervisor_decision": None,
+        "current_node": None,
+        "status": None,
+        "error": None,
+        "source_ids": request.source_ids,
+        "retrieved_sources": [],
+    }
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post(
+    "/api/v1/knowledge/documents",
+    response_model=KnowledgeSourceUploadResponse,
+    status_code=201,
+)
+async def upload_knowledge_document(
+    file: UploadFile = File(...),
+) -> KnowledgeSourceUploadResponse:
+    try:
+        filename = file.filename or ""
+        if not filename.lower().endswith((".pdf", ".md", ".txt")):
+            raise HTTPException(
+                status_code=415,
+                detail="Only PDF, Markdown, and plain-text files are supported.",
+            )
+
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="The upload exceeds the 10 MB limit.",
+            )
+
+        text = extract_document_text(filename, content)
+        indexed = ingest_document(title=filename, text=text)
+    except HTTPException:
+        raise
+    except (ValueError, UnicodeDecodeError, PdfReadError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Could not index uploaded document %s.", filename)
+        raise HTTPException(
+            status_code=503,
+            detail="The document could not be indexed. Check database and local model availability.",
+        ) from error
+    finally:
+        await file.close()
+
+    return KnowledgeSourceUploadResponse.model_validate(indexed)
+
+
+@app.delete(
+    "/api/v1/knowledge/documents/{document_id}",
+    status_code=204,
+)
+def remove_knowledge_document(document_id: UUID) -> Response:
+    try:
+        deleted = delete_document(document_id)
+    except Exception as error:
+        logger.exception("Could not delete knowledge source %s.", document_id)
+        raise HTTPException(
+            status_code=503,
+            detail="The knowledge source could not be deleted.",
+        ) from error
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Knowledge source not found.")
+    return Response(status_code=204)
+
+
+@app.get(
+    "/api/v1/knowledge/documents",
+    response_model=list[KnowledgeSourceUploadResponse],
+)
+def get_knowledge_documents(
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[KnowledgeSourceUploadResponse]:
+    try:
+        documents = list_documents(limit=limit)
+    except Exception as error:
+        logger.exception("Could not list knowledge sources.")
+        raise HTTPException(
+            status_code=503,
+            detail="Knowledge sources are currently unavailable.",
+        ) from error
+    return [
+        KnowledgeSourceUploadResponse.model_validate(document)
+        for document in documents
+    ]
 
 
 @app.post(
@@ -156,30 +285,25 @@ def create_project_plan_stream(request: ProjectPlanRequest) -> StreamingResponse
             detail="Project storage is unavailable. Check DATABASE_URL and retry.",
         ) from error
 
-    initial_state = {
-        "user_input": _project_input_with_clarifications(request),
-        "requirements": None,
-        "research": None,
-        "architecture": None,
-        "sprint": None,
-        "documentation": None,
-        "supervisor_decision": None,
-        "current_node": None,
-        "status": None,
-        "error": None,
-    }
+    initial_state = _initial_workflow_state(request)
 
     def stream_events():
         result = {}
         try:
-            for mode, chunk in progress_graph.stream(
-                initial_state,
-                stream_mode=["custom", "values"],
-            ):
-                if mode == "custom":
-                    yield _server_event({"type": "progress", **chunk})
-                elif mode == "values":
-                    result = chunk
+            with observe(
+                "project.plan",
+                {"has_sources": bool(request.source_ids), "source_count": len(request.source_ids)},
+            ) as observation:
+                for mode, chunk in progress_graph.stream(
+                    initial_state,
+                    stream_mode=["custom", "values"],
+                ):
+                    if mode == "custom":
+                        yield _server_event({"type": "progress", **chunk})
+                    elif mode == "values":
+                        result = chunk
+                if observation is not None:
+                    observation.update(output={"completed": result.get("error") is None})
 
             plan = _save_project_plan(request.project_idea, result)
             yield _server_event(
@@ -217,21 +341,16 @@ def create_project_plan(request: ProjectPlanRequest) -> ProjectPlanResponse:
             detail="Project storage is unavailable. Check DATABASE_URL and retry.",
         ) from error
 
-    initial_state = {
-        "user_input": _project_input_with_clarifications(request),
-        "requirements": None,
-        "research": None,
-        "architecture": None,
-        "sprint": None,
-        "documentation": None,
-        "supervisor_decision": None,
-        "current_node": None,
-        "status": None,
-        "error": None,
-    }
+    initial_state = _initial_workflow_state(request)
 
     try:
-        result = graph.invoke(initial_state)
+        with observe(
+            "project.plan",
+            {"has_sources": bool(request.source_ids), "source_count": len(request.source_ids)},
+        ) as observation:
+            result = graph.invoke(initial_state)
+            if observation is not None:
+                observation.update(output={"completed": result.get("error") is None})
     except Exception as error:
         logger.exception("Project planning workflow raised an exception.")
         raise HTTPException(

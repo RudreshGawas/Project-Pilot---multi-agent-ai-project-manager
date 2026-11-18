@@ -18,6 +18,7 @@ Instead of relying on a single LLM prompt, this project simulates a real softwar
 * 🔄 Dynamic routing using LangGraph
 * 📦 Structured outputs using Pydantic
 * 🧩 Context sharing between agents
+* 📚 Optional document and saved-plan retrieval using PostgreSQL pgvector
 * ⚡ Modular backend API architecture
 * 📡 Live per-agent progress updates while a plan is generated
 * 📄 Downloadable PDF and JSON plans
@@ -273,16 +274,34 @@ uvicorn main:app --reload
 
 * `GET /health` checks that the API is responding.
 * `POST /api/v1/projects/clarify` accepts `{"project_idea": "..."}` and returns up to three optional, idea-specific scope questions. Clear ideas may return no questions.
-* `POST /api/v1/projects/plan` accepts `{"project_idea": "...", "clarifications": [{"question": "...", "answer": "..."}]}`, persists the generated plan, and returns it with a `project_id` and creation timestamp. `clarifications` is optional; project ideas must contain 1–10,000 non-whitespace characters.
+* `POST /api/v1/projects/plan` accepts `{"project_idea": "...", "clarifications": [{"question": "...", "answer": "..."}], "source_ids": ["..."]}`, persists the generated plan, and returns it with a `project_id`, creation timestamp, and sources used. `clarifications` and `source_ids` are optional; project ideas must contain 1–10,000 non-whitespace characters.
 * `POST /api/v1/projects/plan/stream` accepts the same request and streams agent progress followed by the completed plan.
+* `POST /api/v1/knowledge/documents` accepts one PDF, Markdown, or UTF-8 text file up to 10 MB, chunks it, and stores local FastEmbed vectors in PostgreSQL/pgvector.
+* `GET /api/v1/knowledge/documents?limit=100` lists indexed uploads; `limit` can range from 1 to 500.
+* `DELETE /api/v1/knowledge/documents/{document_id}` removes an uploaded or indexed source and its chunks.
 * `GET /api/v1/projects?limit=20` lists recent project ideas and IDs; `limit` can range from 1 to 100.
 * `GET /api/v1/projects/{project_id}` retrieves a saved plan.
 * Interactive API documentation is available at `/docs`.
 
+The UI lets users select uploaded documents and saved plans as explicit sources
+for requirements and architecture. Local FastEmbed models for embeddings and
+reranking download on first use; no hosted embedding/reranking API is called.
+An Ollama-based RAGAS runner and its 25-case synthetic benchmark are documented
+in [docs/evals/rag-evaluation.md](docs/evals/rag-evaluation.md). Langfuse
+tracing is optional and disabled unless configured. Upload/API endpoints do not
+have user authentication yet: keep the app private and do not upload sensitive
+documents.
+
 For an explanation of each LangGraph node and agent, see
 [docs/agents.md](docs/agents.md).
+For the approved RAG, evals, and free-tier deployment scope, see
+[docs/rag-evals-cloud-deployment-plan.md](docs/rag-evals-cloud-deployment-plan.md).
+For RAG evaluation commands and score tracking, see
+[docs/evals/rag-evaluation.md](docs/evals/rag-evaluation.md).
+For a bullet-point summary of the project's additions and changes, see
+[PROJECT_CHANGES.md](PROJECT_CHANGES.md).
 
-Project persistence requires a running PostgreSQL server and an existing database. Set `DATABASE_URL` in `backend/.env`; the `projects` table is created automatically on first read or write.
+Project persistence requires a running PostgreSQL server with pgvector available and an existing database. Set `DATABASE_URL` in `backend/.env`; the project and knowledge tables are created when used.
 
 For local development, the Next.js frontend runs from `frontend/` with `npm run dev`. Copy `frontend/.env.example` to `frontend/.env.local` to configure the API URL. Configure `FRONTEND_ORIGINS` in `backend/.env` to include the frontend origin if it differs from `http://localhost:3000`.
 
@@ -337,23 +356,24 @@ ProjectState
 * FastAPI health check, streaming and non-streaming plan generation, recent project listing, and saved-plan retrieval
 * PostgreSQL persistence for generated project plans
 * Next.js interface with per-agent progress, expandable output cards, PDF/JSON downloads, and saved-plan history
-* Docker Compose setup for running the frontend, API, and PostgreSQL locally
+* Docker Compose setup for running the frontend, API, and PostgreSQL/pgvector locally
+* Document ingestion, chunking, local embeddings and reranking, plus explicit per-plan source selection
+* RAGAS benchmark data and an optional local Ollama evaluation runner
 
-Automated tests verify API input handling, PostgreSQL repository behavior with mocked database connections, saved-plan retrieval, and the complete workflow with mocked LLM responses. Live Gemini calls and integration against a running PostgreSQL server are not covered by those tests. The frontend and API integration are implemented; the Docker stack has not been run in this environment.
+Automated tests verify API input handling, PostgreSQL repository behavior with mocked database connections, saved-plan retrieval, and the complete workflow with mocked LLM responses. Live Gemini calls and PostgreSQL integration are not covered by those tests. The local Docker stack was manually started and its health checks, document indexing, retrieval, and selected-source isolation were verified.
 
-GitHub Actions runs the backend unit suite, frontend production build, and Docker Compose configuration validation on pushes and pull requests. Database and Gemini tests are mocked, so CI does not require external services or credentials.
+GitHub Actions runs the backend unit suite, frontend production build, Docker Compose validation, and local container image builds without publishing. Database and provider-backed evaluation tests are opt-in, so CI does not require database, Ollama, Langfuse, or Gemini credentials.
 
 ### 🔮 Planned
 
 * Memory System
-* Vector Database and Retrieval-Augmented Generation (RAG) — not implemented yet
 * Human-in-the-Loop Approval
 * Multi-LLM Support
 * Tool Calling
 * Web Research Agent
 * Code Generation Agent
 * Deployment Agent
-* CI/CD Integration
+* Cloud resource provisioning and public deployment (deferred pending verified free-tier eligibility and separate approval)
 
 ---
 

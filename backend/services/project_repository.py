@@ -77,7 +77,7 @@ def get_project(project_id: UUID) -> dict[str, Any] | None:
             cursor.execute(CREATE_PROJECTS_TABLE)
             cursor.execute(
                 """
-                SELECT id, created_at, plan
+                SELECT id, project_idea, created_at, plan
                 FROM projects
                 WHERE id = %s
                 """,
@@ -90,8 +90,9 @@ def get_project(project_id: UUID) -> dict[str, Any] | None:
 
     return {
         "project_id": row[0],
-        "created_at": row[1],
-        **row[2],
+        "project_idea": row[1],
+        "created_at": row[2],
+        **row[3],
     }
 
 

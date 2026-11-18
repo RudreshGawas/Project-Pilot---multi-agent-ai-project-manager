@@ -1,5 +1,6 @@
 from graph.state import ProjectState
 from services.llm_service import llm_service
+from services.observability import observe
 
 
 def make_agent_node(context_fn, prompt_fn, schema, state_key: str, node_name: str):
@@ -18,7 +19,16 @@ def make_agent_node(context_fn, prompt_fn, schema, state_key: str, node_name: st
             prompt = prompt_fn(**context)
 
             structured_llm = llm_service.get_structured_llm(schema)
-            result = structured_llm.invoke(prompt)
+            with observe(
+                "agent.generate",
+                {
+                    "agent": node_name,
+                    "has_retrieval": bool(context.get("retrieved_context")),
+                },
+            ) as observation:
+                result = structured_llm.invoke(prompt)
+                if observation is not None:
+                    observation.update(output={"completed": True})
 
             state[state_key] = result
             state["current_node"] = node_name

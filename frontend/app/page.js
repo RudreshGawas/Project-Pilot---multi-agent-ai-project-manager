@@ -212,6 +212,20 @@ function PlanResults({ plan }) {
         </button>
       </div>
 
+      {plan.sources_used?.length > 0 && (
+        <section className="sources-used" aria-label="Reference sources used">
+          <h3>Grounded with these sources</h3>
+          <ul>
+            {plan.sources_used.map((source) => (
+              <li key={source.document_id}>
+                <span>{source.title}</span>
+                <code>{source.document_id}</code>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="agent-windows" aria-label="Project plan agents">
         {sections.map(({ key, title, eyebrow, agent }) => {
           const isSelected = selectedSection === key;
@@ -295,6 +309,7 @@ export default function Home() {
   const [projects, setProjects] = useState([]);
   const [historyError, setHistoryError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [sourcesError, setSourcesError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState("");
@@ -302,6 +317,9 @@ export default function Home() {
   const [clarificationQuestions, setClarificationQuestions] = useState([]);
   const [clarificationAnswers, setClarificationAnswers] = useState({});
   const [clarificationOtherAnswers, setClarificationOtherAnswers] = useState({});
+  const [knowledgeSources, setKnowledgeSources] = useState([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
+  const [uploadingSource, setUploadingSource] = useState(false);
 
   async function refreshProjects() {
     setHistoryLoading(true);
@@ -325,8 +343,27 @@ export default function Home() {
     }
   }
 
+  async function refreshKnowledgeSources() {
+    setSourcesError("");
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/knowledge/documents`);
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || "Could not load reference documents.");
+      }
+      setKnowledgeSources(body);
+    } catch (requestError) {
+      setSourcesError(
+        requestError instanceof TypeError
+          ? "Could not load saved reference documents from the API."
+          : requestError.message,
+      );
+    }
+  }
+
   useEffect(() => {
     refreshProjects();
+    refreshKnowledgeSources();
   }, []);
 
   async function requestPlan(path, options, action) {
@@ -480,10 +517,89 @@ export default function Home() {
         body: JSON.stringify({
           project_idea: idea.trim(),
           clarifications,
+          source_ids: selectedSourceIds,
         }),
       },
       "generate",
     );
+  }
+
+  async function uploadKnowledgeDocument(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const fileInput = event.currentTarget;
+
+    setUploadingSource(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${apiUrl}/api/v1/knowledge/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || "Could not index this document.");
+      }
+      setKnowledgeSources((current) => [
+        body,
+        ...current.filter((source) => source.document_id !== body.document_id),
+      ]);
+      setSourcesError("");
+      setSelectedSourceIds((current) =>
+        current.includes(body.document_id) || current.length >= 20
+          ? current
+          : [...current, body.document_id],
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof TypeError
+          ? "Could not connect to the API while uploading the document."
+          : requestError.message,
+      );
+    } finally {
+      fileInput.value = "";
+      setUploadingSource(false);
+    }
+  }
+
+  function toggleSource(sourceId) {
+    if (selectedSourceIds.includes(sourceId)) {
+      setSelectedSourceIds((current) =>
+        current.filter((id) => id !== sourceId),
+      );
+    } else if (selectedSourceIds.length >= 20) {
+      setError("Select no more than 20 reference sources per plan.");
+    } else {
+      setSelectedSourceIds((current) => [...current, sourceId]);
+    }
+  }
+
+  async function deleteKnowledgeSource(sourceId) {
+    setSourcesError("");
+    try {
+      const response = await fetch(
+        `${apiUrl}/api/v1/knowledge/documents/${encodeURIComponent(sourceId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.detail || "Could not delete the reference document.");
+      }
+      setKnowledgeSources((current) =>
+        current.filter((source) => source.document_id !== sourceId),
+      );
+      setSelectedSourceIds((current) =>
+        current.filter((id) => id !== sourceId),
+      );
+    } catch (requestError) {
+      setSourcesError(
+        requestError instanceof TypeError
+          ? "Could not connect to the API while deleting the document."
+          : requestError.message,
+      );
+    }
   }
 
   function submitClarifications(event) {
@@ -578,6 +694,66 @@ export default function Home() {
               required
               value={idea}
             />
+            <div className="knowledge-picker">
+              <div>
+                <p className="eyebrow">OPTIONAL REFERENCE MATERIAL</p>
+                <p className="knowledge-note">
+                  Select documents or past plans to ground requirements and
+                  architecture. Uploads are stored as indexed text; avoid
+                  sensitive files in this unauthenticated demo.
+                </p>
+              </div>
+              <label className="upload-button">
+                {uploadingSource ? "Indexing document..." : "Upload PDF, MD, or TXT"}
+                <input
+                  accept=".pdf,.md,.txt"
+                  disabled={busy || uploadingSource}
+                  onChange={uploadKnowledgeDocument}
+                  type="file"
+                />
+              </label>
+              {(knowledgeSources.length > 0 || projects.length > 0) && (
+                <div className="source-options">
+                  {knowledgeSources.map((source) => (
+                    <div className="source-option" key={source.document_id}>
+                      <label className="source-option-label">
+                        <input
+                          checked={selectedSourceIds.includes(source.document_id)}
+                          onChange={() => toggleSource(source.document_id)}
+                          type="checkbox"
+                        />
+                        <span>{source.title}</span>
+                        <small>{source.chunk_count} chunks</small>
+                      </label>
+                      <button
+                        className="source-remove"
+                        disabled={busy}
+                        onClick={() => deleteKnowledgeSource(source.document_id)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  {projects.map((project) => (
+                    <label className="source-option" key={project.project_id}>
+                      <input
+                        checked={selectedSourceIds.includes(project.project_id)}
+                        onChange={() => toggleSource(project.project_id)}
+                        type="checkbox"
+                      />
+                      <span>{project.project_idea}</span>
+                      <small>Saved plan</small>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {sourcesError && (
+                <p className="knowledge-error" role="status">
+                  {sourcesError}
+                </p>
+              )}
+            </div>
             <div className="form-footer">
               <span>{idea.length.toLocaleString()} / 10,000 characters</span>
               <button

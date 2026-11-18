@@ -12,7 +12,8 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /home/appuser/.cache/fastembed \
+    && chown -R appuser:appuser /app /home/appuser/.cache
 
 USER appuser
 EXPOSE 8000

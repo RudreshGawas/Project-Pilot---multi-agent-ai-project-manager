@@ -67,3 +67,20 @@ jobs:
           cp .env.example .env
           cp backend/.env.example backend/.env
           docker compose config --quiet
+
+  container-image-build:
+    name: Container image build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image without publishing
+        run: docker build --tag project-pilot-backend:ci ./backend
+
+      - name: Build frontend image without publishing
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+            --tag project-pilot-frontend:ci \
+            ./frontend

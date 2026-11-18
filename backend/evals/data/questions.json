@@ -1,0 +1,102 @@
+[
+  {
+    "user_input": "Who is Cedar Loop being built for?",
+    "reference": "It is for one local hiking club, with a pilot limited to 40 club members."
+  },
+  {
+    "user_input": "What is the maximum size of the pilot group?",
+    "reference": "The pilot is limited to 40 club members."
+  },
+  {
+    "user_input": "Which two user roles does the brief define?",
+    "reference": "The roles are trip organizer and club member."
+  },
+  {
+    "user_input": "What details are recorded for a hike?",
+    "reference": "A trip records its title, date and start time, trail name, meeting point, distance, elevation gain, difficulty, organizer notes, and participant limit."
+  },
+  {
+    "user_input": "How can a member respond to an upcoming trip?",
+    "reference": "A member can RSVP yes or no, then change or withdraw the RSVP."
+  },
+  {
+    "user_input": "Who can see the trip roster?",
+    "reference": "Only signed-in club members can see the roster."
+  },
+  {
+    "user_input": "Can anyone create an account through public self-registration?",
+    "reference": "No. Organizers invite members, and there is no public self-registration."
+  },
+  {
+    "user_input": "Which sign-in method is included in the pilot?",
+    "reference": "The pilot includes email and password sign-in."
+  },
+  {
+    "user_input": "Does the MVP include trail maps?",
+    "reference": "No. Maps and external trail-data integrations are explicitly excluded."
+  },
+  {
+    "user_input": "Will the app send email or push notifications?",
+    "reference": "No. Email and push notifications are not included in the pilot."
+  },
+  {
+    "user_input": "Can members pay for hikes in Cedar Loop?",
+    "reference": "No. Payments are not included in the pilot."
+  },
+  {
+    "user_input": "How is the trip meeting point entered?",
+    "reference": "The organizer enters the meeting point as text; the app does not use a map integration."
+  },
+  {
+    "user_input": "Does the app collect a member's home address?",
+    "reference": "No. The brief says the app does not collect members' home addresses."
+  },
+  {
+    "user_input": "Which frontend framework is selected?",
+    "reference": "The selected frontend is Next.js."
+  },
+  {
+    "user_input": "What backend framework and database are selected?",
+    "reference": "The selected backend is FastAPI and the database is PostgreSQL."
+  },
+  {
+    "user_input": "Is the first release designed as several microservices?",
+    "reference": "No. It is one web application with a managed PostgreSQL database, not a microservice system."
+  },
+  {
+    "user_input": "Which permissions apply to creating trips and changing RSVPs?",
+    "reference": "Only organizers can create or edit trips. A member can update only their own RSVP."
+  },
+  {
+    "user_input": "What are the two pilot success measures?",
+    "reference": "Organizers should create at least 10 trips, and at least 60% of invited members should RSVP within the first two weeks."
+  },
+  {
+    "user_input": "What happens when a hike is cancelled?",
+    "reference": "A cancelled trip remains visible to signed-in members until its scheduled date and has a clear cancelled status."
+  },
+  {
+    "user_input": "How long should completed trip records be kept?",
+    "reference": "Trip records should be retained for one year after the trip ends, then removed."
+  },
+  {
+    "user_input": "Must a member be online to change an RSVP?",
+    "reference": "Yes. RSVP changes require a network connection; the app does not support offline changes."
+  },
+  {
+    "user_input": "What is the main mobile/network usability constraint?",
+    "reference": "The app should work on a phone with intermittent cellular connectivity, but trip creation and RSVP changes still require a network connection."
+  },
+  {
+    "user_input": "Are organizer notes private to organizers?",
+    "reference": "No. Organizer notes are visible to signed-in members and must not contain private medical information."
+  },
+  {
+    "user_input": "What is the expected uptime guarantee?",
+    "reference": "The brief specifies no uptime guarantee."
+  },
+  {
+    "user_input": "Which payment processor did the club select?",
+    "reference": "The brief does not select a payment processor; payments are outside the pilot scope."
+  }
+]

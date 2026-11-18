@@ -1,0 +1,4 @@
+-r requirements.txt
+openai==2.9.0
+instructor==1.17.0
+ragas==0.4.4

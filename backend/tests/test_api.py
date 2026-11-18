@@ -143,6 +143,7 @@ class ApiTests(unittest.TestCase):
                 "architecture",
                 "sprint",
                 "documentation",
+                "sources_used",
             },
         )
         self.assertEqual(
@@ -159,6 +160,57 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.json()["project_id"], str(PROJECT_ID))
         check_db.assert_called_once_with()
+
+    def test_plan_endpoint_passes_selected_sources_into_workflow(self):
+        source_id = "12345678-1234-5678-1234-567812345678"
+        with (
+            patch("main.ensure_source_indexed") as ensure_source_indexed,
+            patch(
+                "main.graph.invoke",
+                return_value=successful_workflow_result(),
+            ) as invoke,
+            patch("main.project_repository.save_project", return_value=saved_project()),
+            patch("main.project_repository.check_database_connection"),
+        ):
+            response = client.post(
+                "/api/v1/projects/plan",
+                json={
+                    "project_idea": "Build a project planning application.",
+                    "source_ids": [source_id],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        ensure_source_indexed.assert_called_once_with(UUID(source_id))
+        self.assertEqual(invoke.call_args.args[0]["source_ids"], [UUID(source_id)])
+
+    def test_plan_endpoint_persists_retrieved_source_references(self):
+        source = {
+            "document_id": PROJECT_ID,
+            "title": "Project reference",
+            "source_type": "upload",
+        }
+        workflow_result = successful_workflow_result()
+        workflow_result["retrieved_sources"] = [source]
+        with (
+            patch("main.graph.invoke", return_value=workflow_result),
+            patch(
+                "main.project_repository.save_project",
+                return_value=saved_project(),
+            ) as save_project,
+            patch("main.project_repository.check_database_connection"),
+        ):
+            response = client.post(
+                "/api/v1/projects/plan",
+                json={"project_idea": "Build a project planning application."},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["sources_used"][0]["document_id"], str(PROJECT_ID))
+        self.assertEqual(
+            save_project.call_args.kwargs["plan"]["sources_used"][0]["document_id"],
+            str(PROJECT_ID),
+        )
 
     def test_streaming_plan_endpoint_sends_agent_progress_and_plan(self):
         progress_events = [
@@ -320,6 +372,68 @@ class ApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
+
+    def test_plan_endpoint_rejects_more_than_twenty_sources(self):
+        response = client.post(
+            "/api/v1/projects/plan",
+            json={
+                "project_idea": "Build a project planning application.",
+                "source_ids": [str(UUID(int=index + 1)) for index in range(21)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_knowledge_upload_indexes_supported_text_file(self):
+        indexed_source = {
+            "document_id": PROJECT_ID,
+            "title": "brief.md",
+            "source_type": "upload",
+            "chunk_count": 1,
+        }
+        with (
+            patch("main.extract_document_text", return_value="A project brief."),
+            patch("main.ingest_document", return_value=indexed_source) as ingest,
+        ):
+            response = client.post(
+                "/api/v1/knowledge/documents",
+                files={"file": ("brief.md", b"A project brief.", "text/markdown")},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["document_id"], str(PROJECT_ID))
+        ingest.assert_called_once_with(title="brief.md", text="A project brief.")
+
+    def test_knowledge_upload_rejects_unsupported_file_types(self):
+        response = client.post(
+            "/api/v1/knowledge/documents",
+            files={"file": ("brief.docx", b"not supported")},
+        )
+
+        self.assertEqual(response.status_code, 415)
+
+    def test_knowledge_document_list_returns_saved_uploads(self):
+        documents = [
+            {
+                "document_id": PROJECT_ID,
+                "title": "brief.md",
+                "source_type": "upload",
+                "chunk_count": 3,
+            }
+        ]
+        with patch("main.list_documents", return_value=documents) as list_documents:
+            response = client.get("/api/v1/knowledge/documents?limit=5")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["document_id"], str(PROJECT_ID))
+        list_documents.assert_called_once_with(limit=5)
+
+    def test_knowledge_document_delete_returns_no_content(self):
+        with patch("main.delete_document", return_value=True) as delete_document:
+            response = client.delete(f"/api/v1/knowledge/documents/{PROJECT_ID}")
+
+        self.assertEqual(response.status_code, 204)
+        delete_document.assert_called_once_with(PROJECT_ID)
 
     @patch(
         "main.graph.invoke",

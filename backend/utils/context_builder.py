@@ -1,4 +1,5 @@
 from graph.state import ProjectState
+from rag.retriever import retrieve_context
 
 
 class ContextBuilder:
@@ -45,11 +46,33 @@ class ContextBuilder:
                 "ResearchAnalysis not found. Architect Agent requires completed research."
             )
 
+        source_ids = self.state.get("source_ids", [])
+        retrieved = retrieve_context(
+            source_ids,
+            " ".join(
+                [
+                    *requirements.functional_requirements,
+                    *requirements.non_functional_requirements,
+                    *research.best_practices,
+                ]
+            ),
+        )
+        self._merge_retrieved_sources(retrieved["sources"])
+
         return {
             "functional_requirements": requirements.functional_requirements,
             "non_functional_requirements": requirements.non_functional_requirements,
             "research": research,
+            "retrieved_context": retrieved["context"],
         }
+
+    def _merge_retrieved_sources(self, sources: list[dict]) -> None:
+        by_id = {
+            source["document_id"]: source
+            for source in self.state.get("retrieved_sources", [])
+        }
+        by_id.update({source["document_id"]: source for source in sources})
+        self.state["retrieved_sources"] = list(by_id.values())
 
     def build_sprint_context(self) -> dict:
         """

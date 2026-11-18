@@ -262,6 +262,115 @@ input::placeholder {
   padding: 20px 22px;
 }
 
+.knowledge-picker {
+  display: grid;
+  gap: 12px;
+  margin-top: 17px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfa;
+}
+
+.knowledge-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.upload-button {
+  position: relative;
+  width: fit-content;
+  padding: 9px 12px;
+  border: 1px solid #cbd9ce;
+  border-radius: 5px;
+  color: var(--green);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.upload-button:hover {
+  background: var(--mint);
+}
+
+.upload-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.source-options {
+  display: grid;
+  gap: 7px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.source-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: white;
+  color: #536158;
+  font-size: 11px;
+}
+
+.source-option-label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.source-option span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-option input {
+  accent-color: var(--green);
+}
+
+.source-option small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.source-remove {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: #f7efed;
+  color: #8d3f2c;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.source-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.knowledge-error {
+  margin: 0;
+  color: #8d3f2c;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .clarification-card {
   padding: 22px;
   border: 1px solid #d7e4d7;
@@ -688,6 +797,42 @@ input::placeholder {
 
 .download-actions span {
   margin-left: 8px;
+}
+
+.sources-used {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+}
+
+.sources-used h3 {
+  margin: 0 0 9px;
+  color: var(--green-dark);
+  font: 600 12px "Manrope", sans-serif;
+}
+
+.sources-used ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources-used li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  color: #536158;
+  font-size: 11px;
+}
+
+.sources-used code {
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .agent-windows {

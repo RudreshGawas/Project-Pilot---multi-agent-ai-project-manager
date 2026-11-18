@@ -1,4 +1,5 @@
 from typing import TypedDict
+from uuid import UUID
 
 from schemas.requirement_schema import RequirementAnalysis
 from schemas.research_schema import ResearchAnalysis
@@ -22,6 +23,8 @@ class ProjectState(TypedDict):
     architecture: ArchitectureDesign | None
     sprint: SprintPlan | None
     documentation: Documentation | None
+    source_ids: list[UUID]
+    retrieved_sources: list[dict]
 
     # Supervisor
     supervisor_decision: SupervisorDecision | None

@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from schemas.architect_schema import ArchitectureDesign
@@ -21,6 +22,11 @@ class ProjectPlanRequest(BaseModel):
         default_factory=list,
         max_length=3,
         description="Optional scope decisions confirmed by the user.",
+    )
+    source_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Explicit knowledge sources used to ground the plan.",
     )
 
     @field_validator("project_idea")
@@ -52,9 +58,20 @@ class ProjectPlan(BaseModel):
     documentation: Documentation
 
 
+class KnowledgeSourceReference(BaseModel):
+    document_id: UUID
+    title: str
+    source_type: Literal["upload", "project_plan"]
+
+
+class KnowledgeSourceUploadResponse(KnowledgeSourceReference):
+    chunk_count: int = Field(ge=1)
+
+
 class ProjectPlanResponse(ProjectPlan):
     project_id: UUID
     created_at: datetime
+    sources_used: list[KnowledgeSourceReference] = Field(default_factory=list)
 
 
 class ProjectSummary(BaseModel):
